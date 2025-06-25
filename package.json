@@ -21,11 +21,26 @@
     "typescript": "^4.9.5",
     "web-vitals": "^2.1.4"
   },
+  "devDependencies": {
+    "@tailwindcss/forms": "^0.5.10",
+    "@types/pg": "^8.15.4",
+    "tsx": "^4.6.0",
+    "dotenv": "^16.3.1"
+  },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "test-connection": "tsx scripts/testConnection.ts",
+    "test-simple": "tsx scripts/simpleTestBackfill.ts",
+    "test-quick": "tsx scripts/quickTest.ts",
+    "backfill": "tsx scripts/runCompleteBackfill.ts",
+    "backfill:auto": "tsx scripts/runCompleteBackfill.ts --auto",
+    "backfill:test": "tsx scripts/runCompleteBackfill.ts --test --auto",
+    "backfill:recent": "tsx scripts/runCompleteBackfill.ts --seasons=20232024 --auto",
+    "db:validate": "tsx scripts/validateDatabase.ts",
+    "db:status": "tsx scripts/checkBackfillStatus.ts"
   },
   "eslintConfig": {
     "extends": [
@@ -44,9 +59,5 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  },
-  "devDependencies": {
-    "@tailwindcss/forms": "^0.5.10",
-    "@types/pg": "^8.15.4"
   }
 }
