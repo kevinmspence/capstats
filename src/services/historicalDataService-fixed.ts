@@ -1,4 +1,4 @@
-// src/services/historicalDataService.ts
+// src/services/historicalDataService-fixed.ts
 import axios from 'axios';
 
 interface HistoricalSeason {
@@ -18,7 +18,9 @@ interface HistoricalProgress {
 }
 
 class HistoricalDataService {
-  private readonly NHL_SEASONS_START = 2008;
+  // Updated to use CSV files instead of API endpoints
+  private readonly MONEYPUCK_CSV_BASE = 'https://moneypuck.com/moneypuck/playerData';
+  private readonly NHL_SEASONS_START = 2015; // Start from a year that actually has data
   private readonly CURRENT_YEAR = new Date().getFullYear();
   
   private cache = new Map<string, any>();
@@ -30,6 +32,9 @@ class HistoricalDataService {
     estimatedTimeRemaining: ''
   };
 
+  /**
+   * Generate all seasons from the start year to current
+   */
   private generateSeasons(): HistoricalSeason[] {
     const seasons: HistoricalSeason[] = [];
     
@@ -46,19 +51,23 @@ class HistoricalDataService {
     return seasons;
   }
 
+  /**
+   * Parse CSV data from text
+   */
   private parseCSV(csvText: string): any[] {
     const lines = csvText.trim().split('\n');
     if (lines.length < 2) return [];
     
     const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-    const data: any[] = [];
+    const data = [];
     
     for (let i = 1; i < lines.length; i++) {
       const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-      const row: Record<string, any> = {};
+      const row: any = {};
       
       headers.forEach((header, index) => {
         const value = values[index];
+        // Try to convert to number if it looks like a number
         if (value && !isNaN(Number(value)) && value !== '') {
           row[header] = Number(value);
         } else {
@@ -72,6 +81,9 @@ class HistoricalDataService {
     return data;
   }
 
+  /**
+   * Download and parse CSV file
+   */
   private async fetchCSVData(url: string): Promise<any[]> {
     try {
       console.log(`📥 Downloading CSV: ${url}`);
@@ -93,30 +105,58 @@ class HistoricalDataService {
     }
   }
 
+  /**
+   * Fetch historical data for a specific season using CSV files
+   */
   private async fetchSeasonData(season: HistoricalSeason) {
     const seasonStr = season.startYear.toString();
     
     try {
       console.log(`📚 Fetching ${season.displayName} season data...`);
       
-      // Use the CORRECT MoneyPuck CSV URL structure
-      const baseUrl = 'https://moneypuck.com/moneypuck/playerData/seasonSummary';
-      const urls = {
-        teams: `${baseUrl}/${seasonStr}/regular/teams.csv`,
-        skaters: `${baseUrl}/${seasonStr}/regular/skaters.csv`,
-        goalies: `${baseUrl}/${seasonStr}/regular/goalies.csv`
+      // Try different possible CSV URL patterns that MoneyPuck might use
+      const possibleUrls = {
+        teams: [
+          `${this.MONEYPUCK_CSV_BASE}/teams/${seasonStr}/regular.csv`,
+          `https://moneypuck.com/data/teams_${seasonStr}.csv`,
+          `https://moneypuck.com/csv/teams/${seasonStr}.csv`
+        ],
+        skaters: [
+          `${this.MONEYPUCK_CSV_BASE}/skaters/${seasonStr}/regular.csv`,
+          `https://moneypuck.com/data/skaters_${seasonStr}.csv`,
+          `https://moneypuck.com/csv/skaters/${seasonStr}.csv`
+        ],
+        goalies: [
+          `${this.MONEYPUCK_CSV_BASE}/goalies/${seasonStr}/regular.csv`,
+          `https://moneypuck.com/data/goalies_${seasonStr}.csv`,
+          `https://moneypuck.com/csv/goalies/${seasonStr}.csv`
+        ]
       };
 
-      console.log(`  📊 Teams: ${urls.teams}`);
-      const teamData = await this.fetchCSVData(urls.teams);
-      
-      console.log(`  🏒 Skaters: ${urls.skaters}`);
-      const playerData = await this.fetchCSVData(urls.skaters);
-      
-      console.log(`  🥅 Goalies: ${urls.goalies}`);
-      const goalieData = await this.fetchCSVData(urls.goalies);
+      // Try to fetch each type of data
+      let teamData: any[] = [];
+      let playerData: any[] = [];
+      let goalieData: any[] = [];
 
-      // Filter for Capitals data
+      // Try different URLs for team data
+      for (const url of possibleUrls.teams) {
+        teamData = await this.fetchCSVData(url);
+        if (teamData.length > 0) break;
+      }
+
+      // Try different URLs for player data
+      for (const url of possibleUrls.skaters) {
+        playerData = await this.fetchCSVData(url);
+        if (playerData.length > 0) break;
+      }
+
+      // Try different URLs for goalie data
+      for (const url of possibleUrls.goalies) {
+        goalieData = await this.fetchCSVData(url);
+        if (goalieData.length > 0) break;
+      }
+
+      // Filter for Capitals data (team abbreviation might be 'WSH', 'WAS', or 'Washington')
       const teamAbbreviations = ['WSH', 'WAS', 'Washington', 'WASHINGTON'];
       
       const capitalsTeam = teamData.find((team: any) => 
@@ -155,6 +195,7 @@ class HistoricalDataService {
         }
       };
 
+      // Cache the data
       this.cache.set(season.season, seasonData);
       
       console.log(`✅ Fetched ${season.displayName}: Team=${!!capitalsTeam}, Players=${capitalsPlayers.length}, Goalies=${capitalsGoalies.length}`);
@@ -167,6 +208,9 @@ class HistoricalDataService {
     }
   }
 
+  /**
+   * Backfill all historical data with progress tracking
+   */
   async backfillHistoricalData(
     onProgress?: (progress: HistoricalProgress) => void,
     onSeasonComplete?: (seasonData: any) => void
@@ -189,29 +233,34 @@ class HistoricalDataService {
     for (let i = 0; i < seasons.length; i++) {
       const season = seasons[i];
       
+      // Update progress
       this.progress.currentSeason = season.displayName;
       this.progress.completedSeasons = i;
       this.progress.progress = (i / seasons.length) * 100;
       
+      // Calculate estimated time remaining
       const elapsed = Date.now() - startTime;
       const averageTimePerSeason = elapsed / Math.max(i, 1);
       const remainingSeasons = seasons.length - i;
-      const estimatedRemaining = (remainingSeasons * averageTimePerSeason) / 1000 / 60;
+      const estimatedRemaining = (remainingSeasons * averageTimePerSeason) / 1000 / 60; // minutes
       this.progress.estimatedTimeRemaining = `${Math.ceil(estimatedRemaining)} minutes`;
       
       if (onProgress) {
         onProgress({ ...this.progress });
       }
 
+      // Fetch season data
       const seasonData = await this.fetchSeasonData(season);
       
       if (seasonData && onSeasonComplete) {
         onSeasonComplete(seasonData);
       }
 
+      // Longer delay for CSV downloads to be respectful to MoneyPuck's servers
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
+    // Final progress update
     this.progress.completedSeasons = seasons.length;
     this.progress.progress = 100;
     this.progress.estimatedTimeRemaining = 'Complete!';
@@ -225,6 +274,9 @@ class HistoricalDataService {
     return this.cache;
   }
 
+  /**
+   * Get historical data for analysis
+   */
   getHistoricalAnalysis() {
     const allSeasons = Array.from(this.cache.values());
     
@@ -232,6 +284,7 @@ class HistoricalDataService {
       return null;
     }
 
+    // Filter seasons that actually have data
     const seasonsWithData = allSeasons.filter(season => 
       season.dataAvailable.team || 
       season.dataAvailable.players || 
@@ -242,6 +295,7 @@ class HistoricalDataService {
       return null;
     }
 
+    // Ovechkin's career progression
     const ovechkinProgression = seasonsWithData
       .map(season => {
         if (!season.players || !Array.isArray(season.players)) return null;
@@ -266,6 +320,7 @@ class HistoricalDataService {
       .filter((item): item is NonNullable<typeof item> => item !== null)
       .sort((a, b) => a.season.localeCompare(b.season));
 
+    // Team progression
     const teamProgression = seasonsWithData
       .map(season => {
         if (!season.team) return null;
@@ -290,26 +345,42 @@ class HistoricalDataService {
     };
   }
 
+  /**
+   * Get cached seasons
+   */
   getCachedSeasons(): string[] {
     return Array.from(this.cache.keys()).sort();
   }
 
+  /**
+   * Get specific season data
+   */
   getSeasonData(season: string): any {
     return this.cache.get(season);
   }
 
+  /**
+   * Get current progress
+   */
   getProgress(): HistoricalProgress {
     return { ...this.progress };
   }
 
+  /**
+   * Export all historical data for database storage
+   */
   exportHistoricalData(): any[] {
     return Array.from(this.cache.values());
   }
 
+  /**
+   * Check if backfill is needed
+   */
   needsBackfill(): boolean {
     const expectedSeasons = this.generateSeasons().length;
     return this.cache.size < expectedSeasons;
   }
 }
 
+// Export singleton
 export const historicalDataService = new HistoricalDataService();

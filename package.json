@@ -24,8 +24,8 @@
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.10",
     "@types/pg": "^8.15.4",
-    "tsx": "^4.6.0",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.5.0",
+    "tsx": "^4.20.3"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -35,7 +35,7 @@
     "test-connection": "tsx scripts/testConnection.ts",
     "test-simple": "tsx scripts/simpleTestBackfill.ts",
     "test-quick": "tsx scripts/quickTest.ts",
-    "backfill": "tsx scripts/runCompleteBackfill.ts",
+    "backfill": "tsx scripts/backfillDatabase.ts",
     "backfill:auto": "tsx scripts/runCompleteBackfill.ts --auto",
     "backfill:test": "tsx scripts/runCompleteBackfill.ts --test --auto",
     "backfill:recent": "tsx scripts/runCompleteBackfill.ts --seasons=20232024 --auto",
